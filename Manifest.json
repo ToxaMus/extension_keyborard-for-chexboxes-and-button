@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Управление с клавиатуры checkboxes и btn",
+  "version": "1.0.0",
+  "description": "Управление с клавиатуры checkboxes и btn",
+  "content_scripts": [
+  {
+    "matches": [ "<all_urls>" ],
+    "js": [ "files/main.js" ]
+  }
+]
+}

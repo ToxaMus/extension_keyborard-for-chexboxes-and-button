@@ -1,78 +1,212 @@
 class UniversalManager {
     constructor() {
-        this.elements = []; // Массив для хранения найденных элементов
-        this.scanElements(); // Первоначальное сканирование элементов
-        this.setupEventListeners(); // Настройка обработчиков событий
+        this.elements = [];
+        this.navigationButtons = {
+            prev: null,
+            next: null
+        };
+        this.scanElements();
+        this.scanNavigationButtons();
+        this.setupEventListeners();
     }
 
-    // Сканирует страницу и находит все кликабельные элементы
+    // Сканирует страницу и находит только элементы, относящиеся к ответам
     scanElements() {
-        this.elements = []; // Очищаем массив элементов
+        this.elements = [];
 
         // Находим все потенциально кликабельные элементы
         const buttons = document.querySelectorAll(
             'input[type="checkbox"], input[type="radio"], button, input[type="button"], input[type="submit"], select'
         );
 
-        // Список текстов для навигационных кнопок, которые нужно игнорировать
-        const navigationButtons = [
-            'Предыдущая страница',
-            'Следующая страница',
-            'Завершить',
-            'завершить',
-            'Завершить попытку',
-            'Previous',
-            'Next',
-            'Finish',
-            'Submit',
-            'End attempt'
+        // Расширенный список текстов для игнорирования
+        const ignoreTexts = [
+            'Предыдущая страница', 'Следующая страница', 'Завершить', 'завершить',
+            'Завершить попытку', 'Previous', 'Next', 'Finish', 'Submit', 'End attempt',
+            'Назад', 'Вперед', 'Back', 'Forward', 'Continue', 'Продолжить',
+            'Сохранить', 'Save', 'Отмена', 'Cancel', 'Закрыть', 'Close',
+            'Меню', 'Menu', 'Настройки', 'Settings', 'Поиск', 'Search',
+            'Открыть боковую панель'
         ];
 
-        // Фильтруем элементы по различным критериям
+        // Селекторы элементов, которые нужно всегда игнорировать
+        const ignoreSelectors = [
+            'nav', 'header', 'footer', 'aside', '.sidebar', '.navigation',
+            '.nav', '.header', '.footer', '.menu', '.navbar', '.pagination',
+            '.tooltip.fade.show.bs-tooltip-left',
+            '[title*="боковую панель"]',
+            '[aria-label*="боковую панель"]',
+            '[class*="sidebar-toggle"]',
+            '[id*="sidebar-toggle"]'
+        ];
+
         this.elements = Array.from(buttons).filter(element => {
             const rect = element.getBoundingClientRect();
             const style = getComputedStyle(element);
-            const value = element.value || element.textContent || '';
+            const value = (element.value || element.textContent || element.placeholder || '').trim();
+            const parent = element.closest(ignoreSelectors.join(', '));
 
-            // Проверяем, является ли элемент навигационной кнопкой
-            const isNavigationButton = navigationButtons.some(navButton => 
-                value.includes(navButton)
+            // Проверяем, находится ли элемент в игнорируемой области
+            if (parent) {
+                return false;
+            }
+
+            // Проверяем текст элемента на совпадение с игнорируемыми фразами
+            const shouldIgnore = ignoreTexts.some(ignoreText => 
+                value.toLowerCase().includes(ignoreText.toLowerCase())
             );
 
-            // Возвращаем true только для видимых, активных, не-навигационных элементов
-            return (
-                rect.width > 0 && // Элемент имеет размеры
+            // Проверяем видимость и доступность
+            const isVisible = (
+                rect.width > 0 &&
                 rect.height > 0 &&
-                style.visibility === 'visible' && // Видимый
-                style.display !== 'none' && // Не скрыт
-                style.opacity !== '0' && // Не прозрачный
-                !element.disabled && // Не заблокирован
-                !element.hidden && // Не скрыт атрибутом
-                !isNavigationButton // Не навигационная кнопка
+                style.visibility === 'visible' &&
+                style.display !== 'none' &&
+                style.opacity !== '0' &&
+                !element.disabled &&
+                !element.hidden
             );
+
+            // Дополнительная проверка: элемент должен быть в основном контенте
+            const isInMainContent = this.isInMainContent(element);
+
+            return isVisible && !shouldIgnore && isInMainContent;
         });
 
-        // Логируем результаты сканирования
-        console.log('Найдено элементов:', this.elements.length);
+        console.log('Найдено элементов ответа:', this.elements.length);
         this.elements.forEach((el, i) => {
             const key = this.getKeyForIndex(i);
-            console.log(`${key}:`, el.tagName, el.type || '', el.value || el.textContent);
+            console.log(`${key}:`, el.tagName, el.type || '', el.value || el.textContent || el.placeholder);
         });
 
-        // Если элементов нет - отключаем менеджер
         if (this.elements.length === 0) {
-            console.log('Нет подходящих элементов - менеджер отключен');
+            console.log('Нет элементов ответа - менеджер отключен');
             return;
         }
+    }
+
+    // Сканирует страницу и находит навигационные кнопки
+    scanNavigationButtons() {
+        this.navigationButtons.prev = null;
+        this.navigationButtons.next = null;
+
+        // Ищем все потенциальные навигационные кнопки
+        const allButtons = document.querySelectorAll('button, input[type="button"], input[type="submit"], a.btn, a.button');
+        
+        const prevTexts = ['предыдущая страница', 'previous', 'назад', 'back', '←'];
+        const nextTexts = ['следующая страница', 'next', 'вперед', 'forward', '→', 'далее', 'continue'];
+
+        allButtons.forEach(button => {
+            const text = (button.textContent || button.value || button.placeholder || '').toLowerCase().trim();
+            const rect = button.getBoundingClientRect();
+            const style = getComputedStyle(button);
+            
+            // Проверяем видимость
+            const isVisible = (
+                rect.width > 0 &&
+                rect.height > 0 &&
+                style.visibility === 'visible' &&
+                style.display !== 'none' &&
+                style.opacity !== '0' &&
+                !button.disabled &&
+                !button.hidden
+            );
+
+            if (!isVisible) return;
+
+            // Проверяем на текст "предыдущая страница"
+            if (prevTexts.some(prevText => text.includes(prevText))) {
+                this.navigationButtons.prev = button;
+                console.log('Найдена кнопка "Предыдущая страница"');
+            }
+
+            // Проверяем на текст "следующая страница"
+            if (nextTexts.some(nextText => text.includes(nextText))) {
+                this.navigationButtons.next = button;
+                console.log('Найдена кнопка "Следующая страница"');
+            }
+        });
+
+        // Если не нашли по тексту, попробуем найти по классам или ID
+        if (!this.navigationButtons.prev || !this.navigationButtons.next) {
+            const prevSelectors = [
+                '[id*="prev"]', '[class*="prev"]', '[id*="back"]', '[class*="back"]',
+                '.pagination-prev', '.page-prev', '.nav-prev', '.previous'
+            ];
+            const nextSelectors = [
+                '[id*="next"]', '[class*="next"]', '[id*="forward"]', '[class*="forward"]',
+                '.pagination-next', '.page-next', '.nav-next', '.next'
+            ];
+
+            if (!this.navigationButtons.prev) {
+                const prevElement = document.querySelector(prevSelectors.join(', '));
+                if (prevElement && this.isElementVisible(prevElement)) {
+                    this.navigationButtons.prev = prevElement;
+                    console.log('Найдена кнопка "Предыдущая" по селектору');
+                }
+            }
+
+            if (!this.navigationButtons.next) {
+                const nextElement = document.querySelector(nextSelectors.join(', '));
+                if (nextElement && this.isElementVisible(nextElement)) {
+                    this.navigationButtons.next = nextElement;
+                    console.log('Найдена кнопка "Следующая" по селектору');
+                }
+            }
+        }
+    }
+
+    // Проверяет видимость элемента
+    isElementVisible(element) {
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        
+        return (
+            rect.width > 0 &&
+            rect.height > 0 &&
+            style.visibility === 'visible' &&
+            style.display !== 'none' &&
+            style.opacity !== '0' &&
+            !element.disabled &&
+            !element.hidden
+        );
+    }
+
+    // Проверяет, находится ли элемент в основном контенте страницы
+    isInMainContent(element) {
+        const ignoredContainers = [
+            'header', 'footer', 'nav', 'aside', 
+            '.header', '.footer', '.nav', '.sidebar',
+            '.navigation', '.navbar', '.pagination',
+            '.tooltip',
+            '[class*="sidebar"]'
+        ];
+
+        for (const selector of ignoredContainers) {
+            if (element.closest(selector)) {
+                return false;
+            }
+        }
+
+        const viewportHeight = window.innerHeight;
+        const viewportWidth = window.innerWidth;
+        const rect = element.getBoundingClientRect();
+
+        const isInViewport = (
+            rect.top >= 0 &&
+            rect.left >= 0 &&
+            rect.bottom <= viewportHeight &&
+            rect.right <= viewportWidth
+        );
+
+        return isInViewport;
     }
 
     // Возвращает клавишу для элемента по его индексу
     getKeyForIndex(index) {
         if (index < 9) {
-            // Цифры 1-9 для первых 9 элементов
             return (index + 1).toString();
         } else {
-            // Русские буквы а-я для элементов с 10 по 42
             const letterIndex = index - 9;
             const russianAlphabet = 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя';
             return russianAlphabet[letterIndex - 1] || '?';
@@ -82,20 +216,17 @@ class UniversalManager {
     // Возвращает индекс элемента по клавише
     getIndexFromKey(key) {
         if (/^[1-9]$/.test(key)) {
-            // Цифры 1-9
             return parseInt(key) - 1;
         } else if (/^[а-яё]$/.test(key)) {
-            // Русские буквы а-яё
             const russianAlphabet = 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя';
             const letterIndex = russianAlphabet.indexOf(key);
             return 9 + letterIndex;
         }
-        return -1; // Неверная клавиша
+        return -1;
     }
 
     // Активирует элемент по клавише или индексу
     activateElement(key) {
-        // Проверка: если инпут активирован, ничего не делать
         const activeElement = document.activeElement;
         if (activeElement && 
             (activeElement.tagName === 'INPUT' || 
@@ -111,64 +242,92 @@ class UniversalManager {
         if (typeof key === 'string') {
             index = this.getIndexFromKey(key.toLowerCase());
         } else if (typeof key === 'number') {
-            index = key - 1; // Для обратной совместимости с числами
+            index = key - 1;
         } else {
             return false;
         }
 
-        // Проверяем валидность индекса
         if (index < 0 || index >= this.elements.length) return false;
 
         const element = this.elements[index];
 
-        // Обрабатываем разные типы элементов
         if (element.tagName === 'SELECT') {
-            // Для select элементов фокусируем и открываем dropdown
             element.focus();
-            element.click(); // Открываем список options
+            element.click();
         } else if (element.type === 'checkbox') {
-            element.checked = !element.checked; // Переключаем чекбокс
+            element.checked = !element.checked;
         } else if (element.type === 'radio') {
-            element.checked = true; // Выбираем радиокнопку
+            element.checked = true;
         } else {
-            element.click(); // Стандартный клик для других элементов
+            element.click();
         }
 
         console.log(`Активирован элемент: ${this.getKeyForIndex(index)}`);
         return true;
     }
 
+    // Нажимает навигационную кнопку
+    pressNavigationButton(direction) {
+        const activeElement = document.activeElement;
+        if (activeElement && 
+            (activeElement.tagName === 'INPUT' || 
+             activeElement.tagName === 'TEXTAREA' || 
+             activeElement.isContentEditable)) {
+            console.log('Активный элемент ввода - действие отменено');
+            return false;
+        }
+
+        const button = this.navigationButtons[direction];
+        if (button && this.isElementVisible(button)) {
+            button.click();
+            console.log(`Нажата кнопка: ${direction === 'prev' ? 'Предыдущая страница' : 'Следующая страница'}`);
+            return true;
+        } else {
+            console.log(`Кнопка "${direction}" не найдена или не видима`);
+            return false;
+        }
+    }
+
     // Настраивает обработчики событий клавиатуры
     setupEventListeners() {
-        if (this.elements.length === 0) return;
-
         document.addEventListener('keydown', (event) => {
             const key = event.key.toLowerCase();
 
-            // Проверка: если инпут активирован, ничего не делать
             const activeElement = document.activeElement;
             if (activeElement && 
                 (activeElement.tagName === 'INPUT' || 
                  activeElement.tagName === 'TEXTAREA' || 
                  activeElement.isContentEditable)) {
-                return; // Пропускаем обработку, если активен элемент ввода
+                return;
             }
 
-            // Обработка цифр 1-9 и русских букв а-я
+            // Обработка цифр 1-9 и русских букв а-я для ответов
             if (/^[1-9а-яё]$/.test(key)) {
-                event.preventDefault(); // Предотвращаем стандартное поведение
+                event.preventDefault();
                 this.activateElement(key);
             }
 
-            // Обработка клавиши пересканирования (R или К)
-            if (key === 'к' || key === 'К' || key === 'R' || key === 'r') {
+            // Обработка стрелок для навигации
+            if (key === 'arrowleft') {
                 event.preventDefault();
-                this.scanElements(); // Пересканируем элементы
+                this.pressNavigationButton('prev');
+            } else if (key === 'arrowright') {
+                event.preventDefault();
+                this.pressNavigationButton('next');
+            }
+
+            // Обработка клавиши пересканирования (R или К)
+            if (key === 'к' || key === 'r' || key === 'К' || key === 'R') {
+                event.preventDefault();
+                this.scanElements();
+                this.scanNavigationButtons();
             }
         });
 
-        // Глобальная функция для активации элементов из консоли
+        // Глобальные функции для консоли
         window.n = (key) => this.activateElement(key);
+        window.prevPage = () => this.pressNavigationButton('prev');
+        window.nextPage = () => this.pressNavigationButton('next');
     }
 }
 
